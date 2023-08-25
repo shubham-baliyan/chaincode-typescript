@@ -15,153 +15,161 @@ import { Asset } from "./asset";
 
 @Info({
   title: "AssetTransfer",
-  description: "Smart contract for trading assets",
+  description: "Smart contract for Apache kafka",
 })
 export class AssetTransferContract extends Contract {
+  // this function is to just init the ledger with the predifined asset
   @Transaction()
-  public async InitLedger(ctx: Context): Promise<void> {
+  public async InitLedger(context: Context): Promise<void> {
     const assets: Asset[] = [
       {
         ID: "101",
-        Value: "I am orga1 asset",
+        Value: "I am organistation1 asset",
         Owner: "Org1",
       },
     ];
 
     for (const asset of assets) {
+      // sending the docType as Asset
       asset.docType = "asset";
-      // example of how to write to world state deterministically
-      // use convetion of alphabetic order
-      // we insert data in alphabetic order using 'json-stringify-deterministic' and 'sort-keys-recursive'
-      // when retrieving data, in any lang, the order of data will be the same and consequently also the corresonding hash
-      await ctx.stub.putState(
+      // putting into the ledger
+      await context.stub.putState(
         asset.ID,
         Buffer.from(stringify(sortKeysRecursive(asset)))
       );
-      console.info(`Asset ${asset.ID} initialized`);
+      console.info(`Asset ${asset.ID} added to the intial Ledger`);
     }
   }
 
-  // CreateAsset issues a new asset to the world state with given details.
+  // CreateAsset this functions creates a new asset with the provided details from the API  and is appended to the world State.
   @Transaction()
   public async CreateAsset(
-    ctx: Context,
+    context: Context,
     id: string,
     value: string,
     owner: string
   ): Promise<void> {
-    const exists = await this.AssetExists(ctx, id);
-    if (exists) {
-      throw new Error(`The asset ${id} already exists`);
+    //always here the asset will be ceated by the organisations 1
+    const ifAlreadyExists = await this.AssetExists(context, id);
+    // checking if the asset with the same id exist already or not
+    if (ifAlreadyExists) {
+      throw new Error(`The asset with the ${id} already exists in the ledger`);
     }
-
+    // if not present create the asset
     const asset = {
       ID: id,
       Value: value,
       Owner: owner,
     };
-    // we insert data in alphabetic order using 'json-stringify-deterministic' and 'sort-keys-recursive'
-    await ctx.stub.putState(
+    //data inserting into the ledger in alphabetic order  using the sort keys Recursive function
+    await context.stub.putState(
       id,
       Buffer.from(stringify(sortKeysRecursive(asset)))
     );
   }
 
-  // ReadAsset returns the asset stored in the world state with given id.
+  // this function is used to get a asset from the world state with the given id
+  // this function is not used in our application
   @Transaction(false)
-  public async ReadAsset(ctx: Context, id: string): Promise<string> {
-    const assetJSON = await ctx.stub.getState(id); // get the asset from chaincode state
-    if (!assetJSON || assetJSON.length === 0) {
-      throw new Error(`The asset ${id} does not exist`);
+  public async ReadAsset(context: Context, id: string): Promise<string> {
+    const checkIfAssetExist = await context.stub.getState(id); // get the asset from chaincode state
+    if (!checkIfAssetExist || checkIfAssetExist.length === 0) {
+      throw new Error(
+        `The asset  with the ${id} is not found or does not exist`
+      );
     }
-    return assetJSON.toString();
+    // if exist just return
+    return checkIfAssetExist.toString();
   }
 
-  // UpdateAsset updates an existing asset in the world state with provided parameters.
+  // updating the asset with provided id to a newOwner
   @Transaction()
   public async UpdateAsset(
-    ctx: Context,
+    context: Context,
     id: string,
     value: string,
     owner: string
   ): Promise<void> {
-    const exists = await this.AssetExists(ctx, id);
-    if (!exists) {
-      throw new Error(`The asset ${id} does not exist`);
+    // check before adding whether the asset exists or not
+    const checkIfExist = await this.AssetExists(context, id);
+    if (!checkIfExist) {
+      throw new Error(`The asset with the  ${id} does not exist`);
     }
 
-    // overwriting original asset with new asset
+    // updating the found asset with new values
     const updatedAsset = {
       ID: id,
       Value: value,
       Owner: owner,
     };
-    // we insert data in alphabetic order using 'json-stringify-deterministic' and 'sort-keys-recursive'
-    return ctx.stub.putState(
+    return context.stub.putState(
       id,
       Buffer.from(stringify(sortKeysRecursive(updatedAsset)))
     );
   }
 
-  // DeleteAsset deletes an given asset from the world state.
+  // deleting the assets , id should be provided
   @Transaction()
-  public async DeleteAsset(ctx: Context, id: string): Promise<void> {
-    const exists = await this.AssetExists(ctx, id);
-    if (!exists) {
-      throw new Error(`The asset ${id} does not exist`);
+  public async DeleteAsset(context: Context, id: string): Promise<void> {
+    const checkIfAssetExist = await this.AssetExists(context, id);
+    if (!checkIfAssetExist) {
+      throw new Error(`The asset  does not exist`);
     }
-    return ctx.stub.deleteState(id);
+    //otherwise delete
+    return context.stub.deleteState(id);
   }
 
-  // AssetExists returns true when asset with given ID exists in world state.
+  // AssetExists is function used to return true or false  depending upon whether the asset exist or not in the world state.
   @Transaction(false)
   @Returns("boolean")
-  public async AssetExists(ctx: Context, id: string): Promise<boolean> {
-    const assetJSON = await ctx.stub.getState(id);
-    return assetJSON && assetJSON.length > 0;
+  public async AssetExists(context: Context, id: string): Promise<boolean> {
+    const assetExistJson = await context.stub.getState(id);
+    return assetExistJson && assetExistJson.length > 0;
   }
 
-  // TransferAsset updates the owner field of asset with given id in the world state, and returns the old owner.
+  // TransferAsset function is used the update the owner of the existing asset
   @Transaction()
   public async TransferAsset(
-    ctx: Context,
+    context: Context,
     id: string,
     newOwner: string
   ): Promise<string> {
-    const assetString = await this.ReadAsset(ctx, id);
-    const asset = JSON.parse(assetString);
-    const oldOwner = asset.Owner;
+    const assetInString = await this.ReadAsset(context, id);
+    const asset = JSON.parse(assetInString);
+    const previousOwner = asset.Owner;
+    // setting the newOwner recieved from the api
     asset.Owner = newOwner;
-    // we insert data in alphabetic order using 'json-stringify-deterministic' and 'sort-keys-recursive'
-    await ctx.stub.putState(
+    await context.stub.putState(
       id,
       Buffer.from(stringify(sortKeysRecursive(asset)))
     );
-    return oldOwner;
+    return previousOwner;
   }
 
-  // GetAllAssets returns all assets found in the world state.
+  // GetAllAssets function is used to get all the assets which are present on the worldState
   @Transaction(false)
   @Returns("string")
-  public async GetAllAssets(ctx: Context): Promise<string> {
-    const allResults = [];
-    // range query with empty string for startKey and endKey does an open-ended query of all assets in the chaincode namespace.
-    const iterator = await ctx.stub.getStateByRange("", "");
-    let result = await iterator.next();
-    while (!result.done) {
-      const strValue = Buffer.from(result.value.value.toString()).toString(
+  public async GetAllAssets(context: Context): Promise<string> {
+    // array to store all the assets
+    const allAssets = [];
+    // this query gets us all the assets
+    const iterator = await context.stub.getStateByRange("", "");
+    let response = await iterator.next();
+    while (!response.done) {
+      const strValue = Buffer.from(response.value.value.toString()).toString(
         "utf8"
       );
-      let record;
+      let singleRecord;
       try {
-        record = JSON.parse(strValue);
+        singleRecord = JSON.parse(strValue);
       } catch (err) {
         console.log(err);
-        record = strValue;
+        singleRecord = strValue;
       }
-      allResults.push(record);
-      result = await iterator.next();
+      allAssets.push(singleRecord);
+      response = await iterator.next();
     }
-    return JSON.stringify(allResults);
+    //stringify the result before its returned
+    return JSON.stringify(allAssets);
   }
 }
